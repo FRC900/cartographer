@@ -15,6 +15,7 @@
 cmake_minimum_required(VERSION 2.8.12)  # Ships with Ubuntu 14.04 (Trusty)
 
 project(cartographer)
+include ("../cmake_modules/CMakeOpt.cmake")
 
 set(CARTOGRAPHER_MAJOR_VERSION 1)
 set(CARTOGRAPHER_MINOR_VERSION 0)
@@ -148,7 +149,7 @@ target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE
   "${GMOCK_INCLUDE_DIRS}")
 target_link_libraries(${PROJECT_NAME} PUBLIC ${GMOCK_LIBRARY})
 
-set(TARGET_COMPILE_FLAGS "${TARGET_COMPILE_FLAGS} ${GOOG_CXX_FLAGS}")
+set(TARGET_COMPILE_FLAGS "${TARGET_COMPILE_FLAGS} ${GOOG_CXX_FLAGS} -fPIC")
 set_target_properties(${PROJECT_NAME} PROPERTIES
   COMPILE_FLAGS ${TARGET_COMPILE_FLAGS})
 
