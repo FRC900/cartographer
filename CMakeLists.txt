@@ -101,7 +101,7 @@ foreach(ABS_FIL ${ALL_TESTS})
   get_filename_component(FIL_WE ${REL_FIL} NAME_WE)
   # Replace slashes as required for CMP0037.
   string(REPLACE "/" "." TEST_TARGET_NAME "${DIR}/${FIL_WE}")
-  google_test("${TEST_TARGET_NAME}" ${ABS_FIL})
+  #google_test("${TEST_TARGET_NAME}" ${ABS_FIL})
 endforeach()
 
 target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC
@@ -145,9 +145,9 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 )
 
 # TODO(damonkohler): Create a testing library.
-target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE
-  "${GMOCK_INCLUDE_DIRS}")
-target_link_libraries(${PROJECT_NAME} PUBLIC ${GMOCK_LIBRARY})
+#target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE
+#  "${GMOCK_INCLUDE_DIRS}")
+#target_link_libraries(${PROJECT_NAME} PUBLIC ${GMOCK_LIBRARY})
 
 set(TARGET_COMPILE_FLAGS "${TARGET_COMPILE_FLAGS} ${GOOG_CXX_FLAGS} -fPIC")
 set_target_properties(${PROJECT_NAME} PROPERTIES
