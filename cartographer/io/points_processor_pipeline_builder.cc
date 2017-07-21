@@ -20,12 +20,14 @@
 #include "cartographer/io/coloring_points_processor.h"
 #include "cartographer/io/counting_points_processor.h"
 #include "cartographer/io/fixed_ratio_sampling_points_processor.h"
+#include "cartographer/io/hybrid_grid_points_processor.h"
 #include "cartographer/io/intensity_to_color_points_processor.h"
 #include "cartographer/io/min_max_range_filtering_points_processor.h"
 #include "cartographer/io/null_points_processor.h"
 #include "cartographer/io/outlier_removing_points_processor.h"
 #include "cartographer/io/pcd_writing_points_processor.h"
 #include "cartographer/io/ply_writing_points_processor.h"
+#include "cartographer/io/probability_grid_points_processor.h"
 #include "cartographer/io/xray_points_processor.h"
 #include "cartographer/io/xyz_writing_points_processor.h"
 #include "cartographer/mapping/proto/trajectory.pb.h"
@@ -73,6 +75,10 @@ void RegisterBuiltInPointsProcessors(
   RegisterFileWritingPointsProcessor<PlyWritingPointsProcessor>(
       file_writer_factory, builder);
   RegisterFileWritingPointsProcessor<XyzWriterPointsProcessor>(
+      file_writer_factory, builder);
+  RegisterFileWritingPointsProcessor<HybridGridPointsProcessor>(
+      file_writer_factory, builder);
+  RegisterFileWritingPointsProcessor<ProbabilityGridPointsProcessor>(
       file_writer_factory, builder);
 
   // X-Ray is an odd ball since it requires the trajectory to figure out the
