@@ -46,6 +46,8 @@ class OptimizationProblemTest : public ::testing::Test {
           huber_scale = 1.,
           consecutive_scan_translation_penalty_factor = 1e-2,
           consecutive_scan_rotation_penalty_factor = 1e-2,
+          fixed_frame_pose_translation_weight = 1e1,
+          fixed_frame_pose_rotation_weight = 1e2,
           log_solver_summary = true,
           ceres_solver_options = {
             use_nonmonotonic_steps = false,
@@ -125,7 +127,7 @@ TEST_F(OptimizationProblemTest, ReducesNoise) {
     optimization_problem_.AddImuData(
         kTrajectoryId, sensor::ImuData{now, Eigen::Vector3d::UnitZ() * 9.81,
                                        Eigen::Vector3d::Zero()});
-    optimization_problem_.AddTrajectoryNode(kTrajectoryId, now, pose);
+    optimization_problem_.AddTrajectoryNode(kTrajectoryId, now, pose, pose);
     now += common::FromSeconds(0.01);
   }
 
@@ -157,11 +159,10 @@ TEST_F(OptimizationProblemTest, ReducesNoise) {
   const auto& node_data = optimization_problem_.node_data().at(0);
   for (int j = 0; j != kNumNodes; ++j) {
     translation_error_before += (test_data[j].ground_truth_pose.translation() -
-                                 node_data[j].point_cloud_pose.translation())
+                                 node_data[j].pose.translation())
                                     .norm();
-    rotation_error_before +=
-        transform::GetAngle(test_data[j].ground_truth_pose.inverse() *
-                            node_data[j].point_cloud_pose);
+    rotation_error_before += transform::GetAngle(
+        test_data[j].ground_truth_pose.inverse() * node_data[j].pose);
   }
 
   optimization_problem_.AddSubmap(kTrajectoryId, kSubmap0Transform);
@@ -174,11 +175,10 @@ TEST_F(OptimizationProblemTest, ReducesNoise) {
   double rotation_error_after = 0.;
   for (int j = 0; j != kNumNodes; ++j) {
     translation_error_after += (test_data[j].ground_truth_pose.translation() -
-                                node_data[j].point_cloud_pose.translation())
+                                node_data[j].pose.translation())
                                    .norm();
-    rotation_error_after +=
-        transform::GetAngle(test_data[j].ground_truth_pose.inverse() *
-                            node_data[j].point_cloud_pose);
+    rotation_error_after += transform::GetAngle(
+        test_data[j].ground_truth_pose.inverse() * node_data[j].pose);
   }
 
   EXPECT_GT(0.8 * translation_error_before, translation_error_after);

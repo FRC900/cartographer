@@ -78,6 +78,9 @@ double global_sampling_ratio
   Rate at which we sample a single trajectory's scans for global
   localization.
 
+bool log_residual_histograms
+  Whether to output histograms for the pose residuals.
+
 
 cartographer.mapping.proto.TrajectoryBuilderOptions
 ===================================================
@@ -86,6 +89,9 @@ cartographer.mapping_2d.proto.LocalTrajectoryBuilderOptions trajectory_builder_2
   Not yet documented.
 
 cartographer.mapping_3d.proto.LocalTrajectoryBuilderOptions trajectory_builder_3d_options
+  Not yet documented.
+
+bool pure_localization
   Not yet documented.
 
 
@@ -98,9 +104,6 @@ double sampling_ratio
 
 double max_constraint_distance
   Threshold for poses to be considered near a submap.
-
-cartographer.sensor.proto.AdaptiveVoxelFilterOptions adaptive_voxel_filter_options
-  Voxel filter used to compute a sparser point cloud for matching.
 
 double min_score
   Threshold for the scan match score below which a match is not considered.
@@ -129,12 +132,6 @@ cartographer.mapping_2d.scan_matching.proto.CeresScanMatcherOptions ceres_scan_m
 cartographer.mapping_3d.scan_matching.proto.FastCorrelativeScanMatcherOptions fast_correlative_scan_matcher_options_3d
   Not yet documented.
 
-cartographer.sensor.proto.AdaptiveVoxelFilterOptions high_resolution_adaptive_voxel_filter_options
-  Voxel filter used for high resolution, 3D loop closure refinement.
-
-cartographer.sensor.proto.AdaptiveVoxelFilterOptions low_resolution_adaptive_voxel_filter_options
-  Voxel filter used for low resolution, 3D loop closure refinement.
-
 cartographer.mapping_3d.scan_matching.proto.CeresScanMatcherOptions ceres_scan_matcher_options_3d
   Not yet documented.
 
@@ -152,10 +149,16 @@ double rotation_weight
   Scaling parameter for the IMU rotation term.
 
 double consecutive_scan_translation_penalty_factor
-  Penalty factors for changes to the relative pose between consecutive scans.
+  Penalty factors for translation changes to the relative pose between consecutive scans.
 
 double consecutive_scan_rotation_penalty_factor
-  Not yet documented.
+  Penalty factors for rotation changes to the relative pose between consecutive scans.
+
+double fixed_frame_pose_translation_weight
+  Scaling parameter for the FixedFramePose translation.
+
+double fixed_frame_pose_rotation_weight
+  Scaling parameter for the FixedFramePose rotation.
 
 bool log_solver_summary
   If true, the Ceres solver summary will be logged for every optimization.
@@ -182,12 +185,20 @@ float max_z
 float missing_data_ray_length
   Points beyond 'max_range' will be inserted with this length as empty space.
 
+int32 scans_per_accumulation
+  Number of scans to accumulate into one unwarped, combined scan to use for
+  scan matching.
+
 float voxel_filter_size
   Voxel filter that gets applied to the range data immediately after
   cropping.
 
 cartographer.sensor.proto.AdaptiveVoxelFilterOptions adaptive_voxel_filter_options
   Voxel filter used to compute a sparser point cloud for matching.
+
+cartographer.sensor.proto.AdaptiveVoxelFilterOptions loop_closure_adaptive_voxel_filter_options
+  Voxel filter used to compute a sparser point cloud for finding loop
+  closures.
 
 bool use_online_correlative_scan_matching
   Whether to solve the online scan matching first using the correlative scan
@@ -209,9 +220,6 @@ double imu_gravity_time_constant
   the constant is reduced) and
   2. from integration of angular velocities (which gets worse when the
   constant is increased) is balanced.
-
-int32 num_odometry_states
-  Maximum number of previous odometry states to keep.
 
 cartographer.mapping_2d.proto.SubmapsOptions submaps_options
   Not yet documented.
@@ -345,9 +353,6 @@ double imu_gravity_time_constant
   2. from integration of angular velocities (which gets worse when the
   constant is increased) is balanced.
 
-int32 num_odometry_states
-  Maximum number of previous odometry states to keep.
-
 cartographer.mapping_3d.proto.SubmapsOptions submaps_options
   Not yet documented.
 
@@ -437,6 +442,10 @@ int32 rotational_histogram_size
 
 double min_rotational_score
   Minimum score for the rotational scan matcher.
+
+double min_low_resolution_score
+  Threshold for the score of the low resolution grid below which a match is
+  not considered. Only used for 3D.
 
 double linear_xy_search_window
   Linear search window in the plane orthogonal to gravity in which the best

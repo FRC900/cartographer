@@ -76,7 +76,7 @@ class ConstraintBuilder {
   void MaybeAddConstraint(
       const mapping::SubmapId& submap_id, const Submap* submap,
       const mapping::NodeId& node_id,
-      const sensor::CompressedPointCloud* compressed_point_cloud,
+      const mapping::TrajectoryNode::Data* const constant_data,
       const std::vector<mapping::TrajectoryNode>& submap_nodes,
       const transform::Rigid3d& initial_pose);
 
@@ -93,7 +93,7 @@ class ConstraintBuilder {
   void MaybeAddGlobalConstraint(
       const mapping::SubmapId& submap_id, const Submap* submap,
       const mapping::NodeId& node_id,
-      const sensor::CompressedPointCloud* compressed_point_cloud,
+      const mapping::TrajectoryNode::Data* const constant_data,
       const std::vector<mapping::TrajectoryNode>& submap_nodes,
       const Eigen::Quaterniond& gravity_alignment,
       mapping::TrajectoryConnectivity* trajectory_connectivity);
@@ -103,7 +103,7 @@ class ConstraintBuilder {
 
   // Registers the 'callback' to be called with the results, after all
   // computations triggered by MaybeAddConstraint() have finished.
-  void WhenDone(std::function<void(const Result&)> callback);
+  void WhenDone(const std::function<void(const Result&)>& callback);
 
   // Returns the number of consecutive finished scans.
   int GetNumFinishedScans();
@@ -121,7 +121,8 @@ class ConstraintBuilder {
   void ScheduleSubmapScanMatcherConstructionAndQueueWorkItem(
       const mapping::SubmapId& submap_id,
       const std::vector<mapping::TrajectoryNode>& submap_nodes,
-      const Submap* submap, std::function<void()> work_item) REQUIRES(mutex_);
+      const Submap* submap, const std::function<void()>& work_item)
+      REQUIRES(mutex_);
 
   // Constructs the scan matcher for a 'submap', then schedules its work items.
   void ConstructSubmapScanMatcher(
@@ -134,16 +135,16 @@ class ConstraintBuilder {
       const mapping::SubmapId& submap_id) EXCLUDES(mutex_);
 
   // Runs in a background thread and does computations for an additional
-  // constraint, assuming 'submap' and 'point_cloud' do not change anymore.
+  // constraint.
   // If 'match_full_submap' is true, and global localization succeeds, will
   // connect 'node_id.trajectory_id' and 'submap_id.trajectory_id' in
   // 'trajectory_connectivity'.
   // As output, it may create a new Constraint in 'constraint'.
   void ComputeConstraint(
-      const mapping::SubmapId& submap_id, const Submap* submap,
-      const mapping::NodeId& node_id, bool match_full_submap,
+      const mapping::SubmapId& submap_id, const mapping::NodeId& node_id,
+      bool match_full_submap,
       mapping::TrajectoryConnectivity* trajectory_connectivity,
-      const sensor::CompressedPointCloud* compressed_point_cloud,
+      const mapping::TrajectoryNode::Data* const constant_data,
       const transform::Rigid3d& initial_pose,
       std::unique_ptr<Constraint>* constraint) EXCLUDES(mutex_);
 
@@ -182,12 +183,12 @@ class ConstraintBuilder {
       submap_queued_work_items_ GUARDED_BY(mutex_);
 
   common::FixedRatioSampler sampler_;
-  const sensor::AdaptiveVoxelFilter adaptive_voxel_filter_;
   scan_matching::CeresScanMatcher ceres_scan_matcher_;
 
   // Histograms of scan matcher scores.
   common::Histogram score_histogram_ GUARDED_BY(mutex_);
   common::Histogram rotational_score_histogram_ GUARDED_BY(mutex_);
+  common::Histogram low_resolution_score_histogram_ GUARDED_BY(mutex_);
 };
 
 }  // namespace sparse_pose_graph

@@ -33,6 +33,7 @@
 #include "cartographer/mapping_3d/ceres_pose.h"
 #include "cartographer/mapping_3d/imu_integration.h"
 #include "cartographer/mapping_3d/rotation_cost_function.h"
+#include "cartographer/mapping_3d/rotation_parameterization.h"
 #include "cartographer/mapping_3d/sparse_pose_graph/spa_cost_function.h"
 #include "cartographer/transform/transform.h"
 #include "ceres/ceres.h"
@@ -43,33 +44,6 @@
 namespace cartographer {
 namespace mapping_3d {
 namespace sparse_pose_graph {
-
-namespace {
-
-struct ConstantYawQuaternionPlus {
-  template <typename T>
-  bool operator()(const T* x, const T* delta, T* x_plus_delta) const {
-    const T delta_norm =
-        ceres::sqrt(common::Pow2(delta[0]) + common::Pow2(delta[1]));
-    const T sin_delta_over_delta =
-        delta_norm < 1e-6 ? T(1.) : ceres::sin(delta_norm) / delta_norm;
-    T q_delta[4];
-    q_delta[0] = delta_norm < 1e-6 ? T(1.) : ceres::cos(delta_norm);
-    q_delta[1] = sin_delta_over_delta * delta[0];
-    q_delta[2] = sin_delta_over_delta * delta[1];
-    q_delta[3] = T(0.);
-    // We apply the 'delta' which is interpreted as an angle-axis rotation
-    // vector in the xy-plane of the submap frame. This way we can align to
-    // gravity because rotations around the z-axis in the submap frame do not
-    // change gravity alignment, while disallowing random rotations of the map
-    // that have nothing to do with gravity alignment (i.e. we disallow steps
-    // just changing "yaw" of the complete map).
-    ceres::QuaternionProduct(x, q_delta, x_plus_delta);
-    return true;
-  }
-};
-
-}  // namespace
 
 OptimizationProblem::OptimizationProblem(
     const mapping::sparse_pose_graph::proto::OptimizationProblemOptions&
@@ -87,13 +61,31 @@ void OptimizationProblem::AddImuData(const int trajectory_id,
   imu_data_[trajectory_id].push_back(imu_data);
 }
 
+void OptimizationProblem::AddOdometerData(
+    const int trajectory_id, const sensor::OdometryData& odometry_data) {
+  CHECK_GE(trajectory_id, 0);
+  odometry_data_.resize(
+      std::max(odometry_data_.size(), static_cast<size_t>(trajectory_id) + 1));
+  odometry_data_[trajectory_id].Push(odometry_data.time, odometry_data.pose);
+}
+
+void OptimizationProblem::AddFixedFramePoseData(
+    const int trajectory_id,
+    const sensor::FixedFramePoseData& fixed_frame_pose_data) {
+  CHECK_GE(trajectory_id, 0);
+  fixed_frame_pose_data_.resize(std::max(
+      fixed_frame_pose_data_.size(), static_cast<size_t>(trajectory_id) + 1));
+  fixed_frame_pose_data_[trajectory_id].Push(fixed_frame_pose_data.time,
+                                             fixed_frame_pose_data.pose);
+}
+
 void OptimizationProblem::AddTrajectoryNode(
     const int trajectory_id, const common::Time time,
-    const transform::Rigid3d& point_cloud_pose) {
+    const transform::Rigid3d& initial_pose, const transform::Rigid3d& pose) {
   CHECK_GE(trajectory_id, 0);
   node_data_.resize(
       std::max(node_data_.size(), static_cast<size_t>(trajectory_id) + 1));
-  node_data_[trajectory_id].push_back(NodeData{time, point_cloud_pose});
+  node_data_[trajectory_id].push_back(NodeData{time, initial_pose, pose});
 }
 
 void OptimizationProblem::AddSubmap(const int trajectory_id,
@@ -167,7 +159,7 @@ void OptimizationProblem::Solve(const std::vector<Constraint>& constraints,
     for (size_t node_index = 0; node_index != node_data_[trajectory_id].size();
          ++node_index) {
       C_nodes[trajectory_id].emplace_back(
-          node_data_[trajectory_id][node_index].point_cloud_pose,
+          node_data_[trajectory_id][node_index].pose,
           translation_parameterization(),
           common::make_unique<ceres::QuaternionParameterization>(), &problem);
       if (frozen) {
@@ -205,6 +197,7 @@ void OptimizationProblem::Solve(const std::vector<Constraint>& constraints,
   // Add constraints based on IMU observations of angular velocities and
   // linear acceleration.
   trajectory_data_.resize(imu_data_.size());
+  CHECK_GE(trajectory_data_.size(), node_data_.size());
   for (size_t trajectory_id = 0; trajectory_id != node_data_.size();
        ++trajectory_id) {
     const auto& node_data = node_data_[trajectory_id];
@@ -274,6 +267,55 @@ void OptimizationProblem::Solve(const std::vector<Constraint>& constraints,
     }
   }
 
+  // Add fixed frame pose constraints.
+  std::deque<CeresPose> C_fixed_frames;
+  for (size_t trajectory_id = 0; trajectory_id != node_data_.size();
+       ++trajectory_id) {
+    if (trajectory_id >= fixed_frame_pose_data_.size()) {
+      break;
+    }
+
+    bool fixed_frame_pose_initialized = false;
+
+    const auto& node_data = node_data_[trajectory_id];
+    for (size_t node_index = 0; node_index < node_data.size(); ++node_index) {
+      if (!fixed_frame_pose_data_.at(trajectory_id)
+               .Has(node_data[node_index].time)) {
+        continue;
+      }
+
+      const mapping::SparsePoseGraph::Constraint::Pose constraint_pose{
+          fixed_frame_pose_data_.at(trajectory_id)
+              .Lookup(node_data[node_index].time),
+          options_.fixed_frame_pose_translation_weight(),
+          options_.fixed_frame_pose_rotation_weight()};
+
+      if (!fixed_frame_pose_initialized) {
+        const transform::Rigid3d fixed_frame_pose_in_map =
+            node_data[node_index].pose * constraint_pose.zbar_ij.inverse();
+        C_fixed_frames.emplace_back(
+            transform::Rigid3d(
+                fixed_frame_pose_in_map.translation(),
+                Eigen::AngleAxisd(
+                    transform::GetYaw(fixed_frame_pose_in_map.rotation()),
+                    Eigen::Vector3d::UnitZ())),
+            nullptr,
+            common::make_unique<ceres::AutoDiffLocalParameterization<
+                YawOnlyQuaternionPlus, 4, 1>>(),
+            &problem);
+        fixed_frame_pose_initialized = true;
+      }
+
+      problem.AddResidualBlock(
+          new ceres::AutoDiffCostFunction<SpaCostFunction, 6, 4, 3, 4, 3>(
+              new SpaCostFunction(constraint_pose)),
+          nullptr, C_fixed_frames.back().rotation(),
+          C_fixed_frames.back().translation(),
+          C_nodes.at(trajectory_id).at(node_index).rotation(),
+          C_nodes.at(trajectory_id).at(node_index).translation());
+    }
+  }
+
   // Solve.
   ceres::Solver::Summary summary;
   ceres::Solve(
@@ -289,12 +331,13 @@ void OptimizationProblem::Solve(const std::vector<Constraint>& constraints,
       }
       LOG(INFO) << "Gravity was: "
                 << trajectory_data_[trajectory_id].gravity_constant;
+      const auto& imu_calibration =
+          trajectory_data_[trajectory_id].imu_calibration;
       LOG(INFO) << "IMU correction was: "
-                << common::RadToDeg(
-                       2. *
-                       std::acos(
-                           trajectory_data_[trajectory_id].imu_calibration[0]))
-                << " deg";
+                << common::RadToDeg(2. * std::acos(imu_calibration[0]))
+                << " deg (" << imu_calibration[0] << ", " << imu_calibration[1]
+                << ", " << imu_calibration[2] << ", " << imu_calibration[3]
+                << ")";
     }
   }
 
@@ -311,7 +354,7 @@ void OptimizationProblem::Solve(const std::vector<Constraint>& constraints,
        ++trajectory_id) {
     for (size_t node_index = 0; node_index != node_data_[trajectory_id].size();
          ++node_index) {
-      node_data_[trajectory_id][node_index].point_cloud_pose =
+      node_data_[trajectory_id][node_index].pose =
           C_nodes[trajectory_id][node_index].ToRigid();
     }
   }

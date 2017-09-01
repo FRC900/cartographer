@@ -92,7 +92,6 @@ class LocalTrajectoryBuilderTest : public ::testing::Test {
           },
 
           imu_gravity_time_constant = 1.,
-          num_odometry_states = 1,
 
           submaps = {
             high_resolution = 0.2,
@@ -240,8 +239,10 @@ class LocalTrajectoryBuilderTest : public ::testing::Test {
     for (const TrajectoryNode& node : expected_trajectory) {
       AddLinearOnlyImuObservation(node.time, node.pose);
       const auto range_data = GenerateRangeData(node.pose);
-      if (local_trajectory_builder_->AddRangefinderData(
-              node.time, range_data.origin, range_data.returns) != nullptr) {
+      if (local_trajectory_builder_->AddRangeData(
+              node.time,
+              sensor::RangeData{range_data.origin, range_data.returns, {}}) !=
+          nullptr) {
         const auto pose_estimate = local_trajectory_builder_->pose_estimate();
         EXPECT_THAT(pose_estimate.pose, transform::IsNearly(node.pose, 1e-1));
         ++num_poses;
